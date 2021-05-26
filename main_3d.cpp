@@ -101,13 +101,6 @@ int main(int argc, char **argv)
         action = tool_3->addAction("Decrease c_d", graph_area, SLOT(decr_a_b()));
         action->setShortcut(QString("Ctrl+F"));
 
-        /*action = tool_4->addAction("Increase c_d", graph_area, SLOT(incr_c_d()));
-        action->setShortcut(QString("Ctrl+E"));*/
-
-        /*action = tool_4->addAction("Decrease c_d", graph_area, SLOT(decr_c_d()));
-        action->setShortcut(QString("Ctrl+F"));*/
-
-
         action = tool_5->addAction("E&xit", widget, SLOT(close()));
 	action->setShortcut(QString("Ctrl+X"));
 
@@ -127,7 +120,6 @@ int main(int argc, char **argv)
 	vLayout->addWidget(tool_1);
 	vLayout->addWidget(tool_2);
         vLayout->addWidget(tool_3);
-       // vLayout->addWidget(tool_4);
         vLayout->addWidget(tool_5);
 
         vLayout->addWidget(val);
@@ -137,8 +129,6 @@ int main(int argc, char **argv)
 		graph_area, &Window::setGreenToRedGradient);
 	QObject::connect(sqrtSinModelRB, &QRadioButton::toggled,
                 graph_area, &Window::enablefuncModel);
-    //QObject::connect(sqrtSinModelRB, &QRadioButton::toggled,
-     //   ALab, &QLabel::setText(QStringLiteral("Method")));
 	QObject::connect(method, &QRadioButton::toggled,
 		graph_area, &Window::enableMethod);
 	QObject::connect(res, &QRadioButton::toggled,
