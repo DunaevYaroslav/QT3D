@@ -1,531 +1,457 @@
-#include <QPainter>
-#include <stdio.h>
-#include <cmath>
-#include <QtWidgets/QApplication>
-#include <QtWidgets/QWidget>
-#include <QtWidgets/QMessageBox>
-#include <QtWidgets>
 #include "window.h"
+#include <stdio.h>
+#include <math.h>
+#include <QPainter>
+#define MIN(a, b) ((a) > (b) ? (b) : (a))
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
 
-using namespace QtDataVisualization;
+double f_0(double x, double y){
+    return 1;
+}
+double f_1(double x, double y){
+    return x;
+}
+double f_2(double x, double y){
+    return  y;
+}
+double f_3 (double x, double y){
+    return (x+y);
+}
+double f_4 (double x, double y){
+    return sqrt(x*x+y*y);
+}
+double f_5 (double x, double y){
+    return (x*x+y*y);
+}
+double f_6 (double x, double y){
+    return exp(x*x-y*y);
+}
+double f_7 (double x, double y){
+    return 1/(25*(x*x+y*y)+1);
+}
+myGLWidget::myGLWidget(){
+    FUNCTION = f_0;
+    func_id = 0;
+    f_name = "sin(x)/cos(y)";
+}
+int myGLWidget::parse_command_line (int argc, char *argv[]){
+    if (argc == 1)
+        return 0;
 
-#define DEFAULT_A -10
-#define DEFAULT_B 10
-#define DEFAULT_N 60
+    if (argc == 2)
+        return -1;
 
+    if (   sscanf (argv[1], "%lf", &x_min) != 1
+           || sscanf (argv[2], "%lf", &x_max) != 1
+           || x_max - x_min < 1.e-6
+           || sscanf (argv[3], "%lf", &y_min) != 1
+           || sscanf (argv[4], "%lf", &y_max) != 1
+           || y_max - y_min < 1.e-6
+           || (argc > 5 && sscanf (argv[3], "%d", &n) != 1)
+           || (argc > 6 && sscanf (argv[4], "%d", &m) != 1)
+           || n <= 0
+           || m <= 0)
+        return -2;
 
-double func(double x, double y)
-{
-   return qSqrt(x*x+y*y);
+    return 0;
 }
 
-const float Average = 150;
-
-Window::Window(Q3DSurface *surface,QLabel * text12)
-	: m_graph(surface)
-{
-	m_graph->setAxisX(new QValue3DAxis);
-	m_graph->setAxisY(new QValue3DAxis);
-	m_graph->setAxisZ(new QValue3DAxis);
-
-        m_funcProxy= new QSurfaceDataProxy();
-        m_funcSeries = new QSurface3DSeries(m_funcProxy);
-
-	m_methodProxy = new QSurfaceDataProxy();
-	m_methodSeries = new QSurface3DSeries(m_methodProxy);
-
-	m_residProxy = new QSurfaceDataProxy();
-	m_residSeries = new QSurface3DSeries(m_residProxy);
-
-	a = DEFAULT_A;
-	b = DEFAULT_B;
-	c = DEFAULT_A;
-	d = DEFAULT_B;
-	m = DEFAULT_N;
-	n = DEFAULT_N;
-	id = 0;
-    flag=0;
-    text1=text12;
-
-    f = func;
-
-	x = NULL;
-	y = NULL;
-	coeffs = NULL;
+QSize myGLWidget::minimumSizeHint () const{
+    return QSize (100, 100);
 }
 
-Window::~Window() {
-	if (x) delete[] x;
-	if (y) delete[] y;
-	if (coeffs) delete[] coeffs;
-	delete m_graph;
+QSize myGLWidget::sizeHint () const{
+    return QSize (1000, 1000);
 }
 
-void Window::delete_arrays()
-{
-    if (x) delete[] x;
-    if (y) delete[] y;
-    if (coeffs) delete[] coeffs;
+void myGLWidget::initializeGL(){
+    glClearColor(1.0, 1.0, 1.0, 1.0);
+    CameraDefault();
 }
 
-void Window::create_arrays()
-{
-    x = new double[n];
-    y = new double[m];
-    coeffs = new double[16 * n*m];
-}
-
-void Window::fillMethod()
-{
-    char u[200];
-    sprintf(u,"a = %.2f\nb = %.2f\nc = %.2f\nd = %.2f\nm = %d\nn = %d\nMax = %.2f\nMin = %.2f",a,b,c,d,m,n,max_func(),min_func());
-    text1->setText(QString(u));
-    flag=1;
-
-    delete_arrays();
-    create_arrays();
-
-	float stepX = (b - a) / float(n);
-	float stepY = (d - c) / float(m);
-
-    xleft=a-stepX;
-    for (int i = 0; i < n; i++)
-		x[i] = i * stepX + a;
-    xright=b+stepX;
-
-    yleft=c-stepY;
-    for (int i = 0; i < m; i++)
-		y[i] = i * stepY + c;
-    yright=d+stepY;
-
-	method();
-
-	stepX = (b - a) / float(Average);
-	float stepZ = (d - c) / float(Average);
-
-	QSurfaceDataArray *dataArray = new QSurfaceDataArray;
-	dataArray->reserve(Average);
-    for (int i = 0; i < Average; i++) {
-		QSurfaceDataRow *newRow = new QSurfaceDataRow(Average);
-		float _z = i * stepZ + c;
-		int index = 0;
-        for (int j = 0; j < Average; j++) {
-			float _x = j * stepX + a;
-			float _y = poly(_x, _z);
-			(*newRow)[index++].setPosition(QVector3D(_x, _y, _z));
-		}
-		*dataArray << newRow;
-	}
-
-	m_methodProxy->resetArray(dataArray);
-}
-
-double Window::giveA()
-{
-    return a;
-}
-
-double Window::giveC()
-{
-    return c;
-}
-
-double Window::giveB()
-{
-    return b;
-}
-
-double Window::giveD()
-{
-    return d;
-}
-
-int Window::giveN()
-{
-    return n;
-}
-
-int Window::giveM()
-{
-    return m;
-}
-
-
-void Window::fillfuncProxy()
-{
-    char u[200];
-    sprintf(u,"a = %.2f\nb = %.2f\nc = %.2f\nd = %.2f\nm = %d\nn = %d\nMax = %.2f\nMin = %.2f",a,b,c,d,m,n,max_func(),min_func());
-    text1->setText(QString(u));
-    flag=2;
-	float stepX = (b - a) / float(Average);
-	float stepZ = (d - c) / float(Average);
-
-	QSurfaceDataArray *dataArray = new QSurfaceDataArray;
-	dataArray->reserve(Average);
-	for (int i = 0; i < Average; i++) {
-		QSurfaceDataRow *newRow = new QSurfaceDataRow(Average);
-		float _z = i * stepZ + c;
-		int index = 0;
-		for (int j = 0; j < Average; j++) {
-			float _x = j * stepX + a;
-			(*newRow)[index++].setPosition(QVector3D(_x, f(_x, _z), _z));
-		}
-		*dataArray << newRow;
-	}
-
-    m_funcProxy->resetArray(dataArray);
-}
-
-void Window::fillResidual()
-{
-    char u[200];
-    sprintf(u,"a = %.2f\nb = %.2f\nc = %.2f\nd = %.2f\nm = %d\nn = %d\nMax = %.2f\nMin = %.2f",a,b,c,d,m,n,max_func(),min_func());
-    text1->setText(QString(u));
-    flag=3;
-	float stepX = (b - a) / float(Average);
-	float stepZ = (d - c) / float(Average);
-
-	QSurfaceDataArray *dataArray = new QSurfaceDataArray;
-	dataArray->reserve(Average);
-	for (int i = 0; i < Average; i++) {
-		QSurfaceDataRow *newRow = new QSurfaceDataRow(Average);
-		float _z = i * stepZ + c;
-		int index = 0;
-		for (int j = 0; j < Average; j++) {
-			float _x = j * stepX + a;
-			float _y = f(_x, _z) - poly(_x, _z);
-			(*newRow)[index++].setPosition(QVector3D(_x, _y, _z));
-		}
-		*dataArray << newRow;
-	}
-
-	m_residProxy->resetArray(dataArray);
-}
-
-void Window::enableResidual(bool enable)
-{
-    char u[200];
-    sprintf(u,"a = %.2f\nb = %.2f\nc = %.2f\nd = %.2f\nm = %d\nn = %d\nMax = %.2f\nMin = %.2f",a,b,c,d,m,n,max_func(),min_func());
-    this->text1->setText(QString(u));
-	if (enable) {
-		m_residSeries->setDrawMode(QSurface3DSeries::DrawSurfaceAndWireframe);
-		m_residSeries->setFlatShadingEnabled(true);
-
-		m_graph->axisX()->setLabelFormat("%.2f");
-		m_graph->axisZ()->setLabelFormat("%.2f");
-		m_graph->axisX()->setRange(a, b);
-		m_graph->axisY()->setRange(-2, 2);
-		m_graph->axisZ()->setRange(c, d);
-		m_graph->axisX()->setLabelAutoRotation(30);
-		m_graph->axisY()->setLabelAutoRotation(90);
-		m_graph->axisZ()->setLabelAutoRotation(30);
-
-		if (id == 0)
-            m_graph->removeSeries(m_funcSeries);
-		if (id == 1)
-			m_graph->removeSeries(m_methodSeries);
-		id = 2;
-		m_graph->addSeries(m_residSeries);
-
-	}
-}
-
-void Window::enablefuncModel(bool enable)
-{
-    char u[200];
-    sprintf(u,"a = %.2f\nb = %.2f\nc = %.2f\nd = %.2f\nm = %d\nn = %d\nMax = %.2f\nMin = %.2f",a,b,c,d,m,n,max_func(),min_func());
-    text1->setText(QString(u));
-
-	if (enable) {
-        m_funcSeries->setDrawMode(QSurface3DSeries::DrawSurfaceAndWireframe);
-        m_funcSeries->setFlatShadingEnabled(true);
-
-		m_graph->axisX()->setLabelFormat("%.2f");
-		m_graph->axisZ()->setLabelFormat("%.2f");
-		m_graph->axisX()->setRange(a, b);
-		m_graph->axisY()->setRange(min_func(), max_func());
-		m_graph->axisZ()->setRange(c, d);
-		m_graph->axisX()->setLabelAutoRotation(30);
-		m_graph->axisY()->setLabelAutoRotation(90);
-		m_graph->axisZ()->setLabelAutoRotation(30);
-
-		if (id == 2)
-			m_graph->removeSeries(m_residSeries);
-		if (id == 1)
-			m_graph->removeSeries(m_methodSeries);
-		id = 0;
-        m_graph->addSeries(m_funcSeries);
-	}
-}
-
-void Window::enableMethod(bool enable)
-{
-    char u[200];
-    sprintf(u,"a = %.2f\nb = %.2f\nc = %.2f\nd = %.2f\nm = %d\nn = %d\nMax = %.2f\nMin = %.2f",a,b,c,d,m,n,max_func(),min_func());
-    text1->setText(QString(u));
-	if (enable) {
-		m_methodSeries->setDrawMode(QSurface3DSeries::DrawSurfaceAndWireframe);
-		m_methodSeries->setFlatShadingEnabled(true);
-
-		m_graph->axisX()->setLabelFormat("%.2f");
-		m_graph->axisZ()->setLabelFormat("%.2f");
-		m_graph->axisX()->setRange(a, b);
-		m_graph->axisY()->setRange(min_meth(), max_meth());
-		m_graph->axisZ()->setRange(c, d);
-		m_graph->axisX()->setLabelAutoRotation(30);
-		m_graph->axisY()->setLabelAutoRotation(90);
-		m_graph->axisZ()->setLabelAutoRotation(30);
-
-		if (id == 2)
-			m_graph->removeSeries(m_residSeries);
-		if (id == 0)
-            m_graph->removeSeries(m_funcSeries);
-		id = 1;
-		m_graph->addSeries(m_methodSeries);
-	}
-}
-
-void Window::setGreenToRedGradient()
-{
-	QLinearGradient gr;
-	gr.setColorAt(0.0, Qt::darkGreen);
-	gr.setColorAt(0.5, Qt::yellow);
-	gr.setColorAt(0.8, Qt::red);
-	gr.setColorAt(1.0, Qt::darkRed);
-
-	m_graph->seriesList().at(0)->setBaseGradient(gr);
-	m_graph->seriesList().at(0)->setColorStyle(Q3DTheme::ColorStyleRangeGradient);
-}
-
-int Window::parse_command_line(int argc, char *argv[])
-{
-	QMessageBox msg;
-	if (argc == 1) {
-
-		fillMethod();
-                fillfuncProxy();
-                fillResidual();
-
-		msg.setText("Default running\n");
-		msg.exec();
-		return 0;
-	}
-	if (argc == 7) {
-		if (sscanf(argv[1], "%lf", &a) != 1
-			|| sscanf(argv[2], "%lf", &b) != 1
-			|| b - a < 1.e-6
-			|| sscanf(argv[3], "%lf", &c) != 1
-			|| sscanf(argv[4], "%lf", &d) != 1
-			|| d - c < 1.e-6
-			|| sscanf(argv[5], "%d", &n) != 1
-			|| n <= 0
-			|| sscanf(argv[6], "%d", &m) != 1
-			|| m <= 0)
-			return -1;
-		else {
-			fillMethod();
-            fillfuncProxy();
-
-			msg.setText("Internal function: sqrtSin(x)\n");
-			msg.exec();
-			return 0;
-		}
-	}
-	else {
-		msg.setText("Help:\na b c d n m\na, b, c, d - borders\nn, m - numbers of points\n");
-		msg.exec();
-		return -1;
-	}
-	return 0;
-}
-
-void Window::decr_n() {
-    if (n > 10)
-    {
-        n = n -4;
-
-		fillMethod();
-		fillResidual();
-        fillfuncProxy();
-	}
-    m_graph->axisY()->setRange(min_meth(), max_meth());
-}
-
-void Window::decr_m() {
-    if (m > 10)
-    {
-
-        m = m - 4;
-
-        fillMethod();
-        fillResidual();
-        fillfuncProxy();
+///change current function for drawing
+void myGLWidget::change_func(){
+    func_id = (func_id + 1) % 8;
+    switch (func_id){
+    case 0:
+        f_name = "1";
+        FUNCTION = f_0;
+        break;
+    case 1:
+        f_name = "x";
+        FUNCTION = f_1;
+        break;
+    case 2:
+        f_name = "y";
+        FUNCTION = f_2;
+        break;
+    case 3:
+        f_name = "x+y";
+        FUNCTION = f_3;
+        break;
+    case 4:
+        f_name = "sqrt(x*x+y*y)";
+        FUNCTION = f_4;
+        break;
+    case 5:
+        f_name = "x*x+y*y";
+        FUNCTION = f_5;
+        break;
+    case 6:
+        f_name = "exp(x*x-y*y)";
+        FUNCTION = f_6;
+        break;
+    case 7:
+        f_name = "1/(25(x*x+y*y)+1)";
+        FUNCTION = f_7;
+        break;
     }
-    m_graph->axisY()->setRange(min_meth(), max_meth());
+    update();
+}
+void myGLWidget::change_view(){
+    view_id = (view_id + 1) % 3;
+    update();
+}
+void myGLWidget::left(){
+    ANGLEH -= 5;
+    update();
+}
+void myGLWidget::right(){
+    ANGLEH += 5;
+    update();
+}
+void myGLWidget::up(){
+    ANGLEV = MIN(ANGLEV + 5, 80);
+    update();
+}
+void myGLWidget::down(){
+    ANGLEV = MAX(ANGLEV - 5, -80);
+    update();
+}
+void myGLWidget::points_up(){
+        n *= 1.5;
+    update();
+}
+void myGLWidget::points_down(){
+    if (n > 2)
+        n /= 1.5;
+    update();
+}
+void myGLWidget::points_up_m(){
+    m *= 1.5;
+    update();
+}
+void myGLWidget::points_down_m(){
+   if (m > 2)
+       m /= 1.5;
+   update();
+}
+void myGLWidget::scale_up(){
+    CAMERA_POS = MAX(CAMERA_POS - 0.1f, 6);
+    update();
+}
+void myGLWidget::scale_down(){
+    CAMERA_POS += 0.1f;
+    update();
 }
 
-void Window::incr_n()
-{
+void myGLWidget::paintGL(){\
+    glClear(GL_COLOR_BUFFER_BIT);
+    QPainter painter(this);
+    painter.setPen (Qt::black);
+    painter.setFont(QFont("Helvetica", 14));
+    painter.drawText (5, 15, QString("Функция : "));
+    painter.drawText (100, 15, QString(f_name));
+    if(view_id == 0)
+        painter.drawText (5, 45, QString("Только исходная функция"));
+    if(view_id == 1)
+        painter.drawText (5, 45, QString("Исходная функция и приближение"));
+    if(view_id == 2)
+         painter.drawText (5, 45, QString("Погрешность : %2").arg(diff));
+    painter.drawText (5, 75, QString("n : %1").arg(n));
+    painter.drawText (5, 105, QString("m : %1").arg(m));
+    painter.end();
+    ProjectionMatrix();
+    glEnable(GL_DEPTH_TEST);
+    glBegin(GL_QUADS);
 
-    n = n +4;
-    fillMethod();
-    fillResidual();
-    fillfuncProxy();
+    if(view_id == 0){ //рисуем только исходную функцию
+        int	i, j, x_n = 300, y_m = 300;
+        double z1, delta;
+        z_min = FUNCTION(x_min, y_min);
+        z_max = FUNCTION(x_max, y_max);
+        for(double x1 = x_min; x1 < x_max + 1e-6; x1 += 1e-2){
+            for(double y1 = y_min; y1 < y_max + 1e-6; y1 += 1e-2){
+                z1 = FUNCTION(x1, y1);
+                z_max = MAX(z1, z_max);
+                z_min = MIN(z1, z_min);
+            }
+        }
+        delta = 0.01 * (z_max - z_min);
+        z_min -= delta;
+        z_max += delta;
 
+        glColor3d(0.0,0.0,0.0);
+        for (i = 0; i <= x_n-2; i++)
+            for (j = 0; j <= y_m-2; j++) {
+                double	x, y, z;
+                glColor3d(0.5 * (x_n - i) / x_n, 0.5 * j / y_m, 0.2);
+                x = (x_max - x_min) * i / (x_n - 1) + x_min;
+                y = (y_max - y_min) * j / (y_m - 1) + y_min;
+                z = FUNCTION(x, y);
+                glVertex3d(x, y, z);
+                x = (x_max - x_min) * (i + 1) / (x_n - 1) + x_min;
+                y = (y_max - y_min) * j / (y_m - 1) + y_min;
+                z = FUNCTION(x, y);
+                glVertex3d(x, y, z);
+                x = (x_max - x_min) * (i + 1) / (x_n - 1) + x_min;
+                y = (y_max - y_min) * (j + 1) / (y_m - 1) + y_min;
+                z = FUNCTION(x, y);
+                glVertex3d(x, y, z);
+                x = (x_max - x_min) * i / (x_n - 1) + x_min;
+                y = (y_max - y_min) * (j + 1) / (y_m - 1) + y_min;
+                z = FUNCTION(x, y);
+                glVertex3d(x, y, z);
+            }
+        drawAxis();
+    }
+    if(view_id == 1){       //рисуем исходную вместе с приближением
+        int  i, j, k, l, N, M, x_n = 300, y_m = 300;
+        double d_x, d_y, dd_x, dd_y, x, y, x_i, y_j, A[4][4], B[4][4], F[4][4], C[4][4];
 
-    m_graph->axisY()->setRange(min_meth(), max_meth());
-}
+        double z1, delta;
+        z_min = FUNCTION(x_min, y_min);
+        z_max = FUNCTION(x_max, y_max);
+        for(double x1 = x_min; x1 < x_max + 1e-6; x1 += 1e-2){
+            for(double y1 = y_min; y1 < y_max + 1e-6; y1 += 1e-2){
+                z1 = FUNCTION(x1, y1);
+                z_max = MAX(z1, z_max);
+                z_min = MIN(z1, z_min);
+            }
+        }
+        delta = 0.01 * (z_max - z_min);
+        z_min -= delta;
+        z_max += delta;
 
+        //рисуем исходную функцию
+        glColor3d(0.0,0.0,0.0);
+        for (i = 0; i < x_n - 1; i++)
+            for (j = 0; j < y_m - 1; j++) {
+                double	x, y, z;
+                glColor3d(0.5 * (x_n - i) / x_n, 0.5 * j / y_m, 0.5);
+                x = (x_max - x_min) * i / (x_n - 1) + x_min;
+                y = (y_max - y_min) * j / (y_m - 1) + y_min;
+                z = FUNCTION(x, y);
+                glVertex3d(x, y, z);
+                x = (x_max - x_min) * (i + 1) / (x_n - 1) + x_min;
+                y = (y_max - y_min) * j / (y_m - 1) + y_min;
+                z = FUNCTION(x, y);
+                glVertex3d(x, y, z);
+                x = (x_max - x_min) * (i + 1) / (x_n - 1) + x_min;
+                y = (y_max - y_min) * (j + 1) / (y_m - 1) + y_min;
+                z = FUNCTION(x, y);
+                glVertex3d(x, y, z);
+                x = (x_max - x_min) * i / (x_n - 1) + x_min;
+                y = (y_max - y_min) * (j + 1) / (y_m - 1) + y_min;
+                z = FUNCTION(x, y);
+                glVertex3d(x, y, z);
+            }
+        //рисуем приближение функции
+        glColor3d(1.0,1.0,1.0);
+        d_x = (x_max - x_min) / n;
+        d_y = (y_max - y_min) / m;
+        InverseMatrix(d_x, A);
+        TransposeMatrix(d_y, B);
+        for (i = 0; i < n; i++){
+            x_i = x_min + i * d_x;
+            for (j = 0; j < m; j++){
+                y_j = y_min + j * d_y;
+                MatrixF(x_i, x_i + d_x, y_j, y_j + d_y, F);
+                MultiplicateMatrices(A, F, C);
+                MultiplicateMatrices(C, B, F);
+                N = MAX(n, 5);
+                M = MAX(m, 5);
+                dd_x = d_x / N;
+                dd_y = d_y / M;
+                for(k = 0; k < N; k++){
+                    for(l = 0; l < M; l++){
+                        x = x_i + k * dd_x;
+                        y = y_j + l * dd_y;
+                        glColor3d(1.0 * (x - x_min) / (x_max - x_min), 0.5 * (y - y_min) / (y_max - y_min),  0.1);
+                        glVertex3d(x, y, calculation(k * dd_x, l * dd_y, F));
+                        x = x_i + (k + 1) * dd_x;
+                        y = y_j + l * dd_y;
+                        glVertex3d(x, y, calculation((k + 1) * dd_x, l * dd_y, F));
 
-void Window::incr_m()
-{
+                        x = x_i + (k + 1) * dd_x;
+                        y = y_j + (l + 1) * dd_y;
+                        glVertex3d(x, y, calculation((k + 1) * dd_x, (l + 1) * dd_y, F));
 
-    m = m +4 ;
-    fillMethod();
-    fillResidual();
-    fillfuncProxy();
+                        x = x_i + k * dd_x;
+                        y = y_j + (l + 1) * dd_y;
+                        glVertex3d(x, y, calculation(k * dd_x, (l + 1) * dd_y, F));
 
-    m_graph->axisY()->setRange(min_meth(), max_meth());
-}
+                    }
+                }
+            }
+        }
+        drawAxis();
+    }
 
+    if((view_id == 2)&&(n <= 1000)&&(m <= 1000)){
+        int i, j, N, M;
+        double d_x, d_y, dd_x, dd_y, x, y, z, x_i, y_j, z1, f_max = 0.0, f_min = 0.0;
+        double A[4][4], B[4][4], F[4][4], C[4][4];
+        x = 0;
+        y = 0;
+        d_x = (x_max - x_min) / n;
+        d_y = (y_max - y_min) / m;
+        InverseMatrix(d_x, A);
+        TransposeMatrix(d_y, B);
+        for (i = 0; i < n; i++){
+            x_i = x_min + i * d_x;
+            for (j = 0; j < m; j++){
+                y_j = y_min + j * d_y;
+                MatrixF(x_i, x_i + d_x, y_j, y_j + d_y, F);
+                MultiplicateMatrices(A,F,C);
+                MultiplicateMatrices(C,B,F);
+                N = MAX(n, 5);
+                M = MAX(m, 5);
+                dd_x = d_x / N;
+                dd_y = d_y / M;
+                //разность функций
+                for (int i = 0; i < N; i++)
+                    for (int j = 0; j < M; j++){
+                        glColor3d(1.0 * (x - x_min) / (x_max - x_min), 0.5 * (y - y_min) / (y_max - y_min),  0.1);
+                        x = (x_i + i * dd_x);
+                        y = (y_j + j * dd_y);
+                        z = FUNCTION((x_i + i * dd_x), (y_j + j * dd_y));
+                        z1 = z - calculation(i * dd_x, j * dd_y, F);
+                        f_max = MAX(z1, f_max);
+                        f_min = MIN(z1, f_min);
+                        glVertex3d(x, y, z - calculation(i * dd_x, j * dd_y, F));
+                        x = (x_i + (i + 1) * dd_x);
+                        y = (y_j + j * dd_y);
+                        z = FUNCTION((x_i + (i + 1) * dd_x), (y_j + j * dd_y));
+                        z1 = fabs(z - calculation((i + 1) * dd_x, j * dd_y, F));
+                        f_max = MAX(z1, f_max);
+                        f_min = MIN(z1, f_min);
+                        glVertex3d(x, y, z - calculation((i + 1) * dd_x, j * dd_y, F));
+                        x = (x_i + (i + 1) * dd_x);
+                        y = (y_j + (j + 1) * dd_y);
+                        z = FUNCTION((x_i + (i + 1) * dd_x), (y_j + (j + 1) * dd_y));
+                        z1 = fabs(z - calculation((i + 1) * dd_x, (j + 1) * dd_y, F));
+                        f_max = MAX(z1, f_max);
+                        f_min = MIN(z1, f_min);
+                        glVertex3d(x, y, z - calculation((i + 1) * dd_x, (j + 1) * dd_y, F));
+                        x = (x_i + i * dd_x);
+                        y = (y_j + (j + 1) * dd_y);
+                        z = FUNCTION((x_i + i * dd_x), (y_j + (j + 1) * dd_y));
+                        z1 = fabs(z - calculation(i * dd_x, (j + 1) * dd_y, F));
+                        f_max = MAX(z1, f_max);
+                        f_min = MIN(z1, f_min);
+                        glVertex3d(x, y, z - calculation(i * dd_x, (j + 1) * dd_y, F));
+                    }
+                }
+             }
 
-void Window::decr_a_b()
-{
-        if (b - a > 15)
-        {
-            b -= 10;
-            a += 10;
+            if(fabs(f_max)>fabs(f_min)) diff = fabs(f_max);
+            else diff = fabs(f_min);
+
+            if(isnan(diff))
+                diff = 1e-9;
+
+        double delta;
+        z_min = FUNCTION(x_min, y_min);
+        z_max = FUNCTION(x_max, y_max);
+        for(double x1 = x_min; x1 < x_max + 1e-6; x1 += 1e-2){
+            for(double y1 = y_min; y1 < y_max + 1e-6; y1 += 1e-2){
+                z1 = FUNCTION(x1, y1);
+                z_max = MAX(z1, z_max);
+                z_min = MIN(z1, z_min);
+            }
         }
 
-	fillMethod();
-	fillResidual();
-    fillfuncProxy();
-	m_graph->axisX()->setRange(a, b);
-    m_graph->axisY()->setRange(min(min_meth(),30),max(max_meth(),30));
-	m_graph->axisZ()->setRange(c, d);
+        delta = 0.01 * (z_max - z_min);
+        z_min -= delta;
+        z_max += delta;
+
+        drawAxis();
+
+          }
+    glEnd();
+    glDisable(GL_DEPTH_TEST);
 }
 
-void Window::decr_c_d()
-{
-    if (d-c > 15)
-    {
-
-        d -=10;
-        c += 10;
-
-    }
-
-    fillMethod();
-    fillResidual();
-    fillfuncProxy();
-    m_graph->axisX()->setRange(a, b);
-    m_graph->axisY()->setRange(min(min_meth(),30),max(max_meth(),30));
-    m_graph->axisZ()->setRange(c, d);
+void myGLWidget::resizeGL(int nWidth, int nHeight){
+    glViewport(0, 0, nWidth, nHeight);
+    ASPECT = nWidth / nHeight;
+    update();
+}
+void myGLWidget::ProjectionMatrix(){
+    GLfloat VIEW[16] = {0}, PR[16] = {0}, TMP[16] = {0}, CAM_X, cam_y, cam_z;
+    static GLfloat	near = 5, top = 2, bottom, left, right;
+    bottom = -top;
+    right = top * ASPECT;
+    left = -right;
+    PR[0] = 2 * near / (right - left);
+    PR[2] = (right + left) / (right - left);
+    PR[5] = 2 * near / (top - bottom);
+    PR[6] = (top + bottom) / (top - bottom);
+    PR[10] = - 1;
+    PR[11] = - 2 * near;
+    PR[14] = -1;
+    CAM_X = 0;
+    cam_y = 0;
+    cam_z = CAMERA_POS;
+    VIEW[0] = 1;
+    VIEW[6] = -1;
+    VIEW[9] = 1;
+    VIEW[15] = 1;
+    VIEW[12] = -CAM_X;
+    VIEW[13] = -cam_y;
+    VIEW[14] = -cam_z;
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glRotatef(ANGLEH, 0, 0, 1);
+    glGetFloatv(GL_PROJECTION_MATRIX, TMP);
+    glLoadTransposeMatrixf(PR);
+    glMultMatrixf(VIEW);
+    glRotatef(ANGLEH, 0, 0, 1);
+    glRotatef(ANGLEV, TMP[0], TMP[4], TMP[8]);
+}
+void myGLWidget::CameraDefault(){
+    CAMERA_POS = 7;
+    ANGLEH = 45;
+    ANGLEV = 30;
+    ASPECT = width() / height();
 }
 
-void Window::incr_a_b()
-{
+void myGLWidget::drawAxis(){
+    glLineWidth(4.0);
 
-        b += 10;
-        a -= 10;
+    glColor4d(1.0, 0.0, 0.0, 1.0);
+    glBegin(GL_LINES);
+        glVertex3d(x_min - 1.0, 0.0, 0.0);
+        glVertex3d(x_max + 1.0, 0.0, 0.0);
+    glEnd();
 
+    glColor4d(1.0, 0.0, 0.0, 1.0);
+    glBegin(GL_LINES);
+        glVertex3d(x_min - 1.0, 0.0, 0.0);
+        glVertex3d(x_max + 1.0, 0.0, 0.0);
+    glEnd();
 
-        fillMethod();
-        fillResidual();
-        fillfuncProxy();
-        m_graph->axisX()->setRange(a, b);
-        m_graph->axisY()->setRange(min(min_meth(),30),max(max_meth(),30));
-        m_graph->axisZ()->setRange(c, d);
-}
+    glColor4d(0.0, 1.0, 0.0, 1.0);
+    glBegin(GL_LINES);
+        glVertex3d(0.0, y_min-1.0, 0.0);
+        glVertex3d(0.0, y_max+1.0, 0.0);
+    glEnd();
 
-void Window::incr_c_d()
-{
-    d += 10;
-    c -= 10;
+    glColor4d(0.0, 0.0, 1.0, 1.0);
+    glBegin(GL_LINES);
+        glVertex3d(0.0, 0.0, z_max+1.0);
+        glVertex3d(0.0, 0.0, z_min-1.0);
+    glEnd();
 
-
-    fillMethod();
-    fillResidual();
-    fillfuncProxy();
-    m_graph->axisX()->setRange(a, b);
-    m_graph->axisY()->setRange(min(min_meth(),30),max(max_meth(),30));
-    m_graph->axisZ()->setRange(c, d);
-}
-
-
-float Window::max_func() {
-	float stepX = (b - a) / float(Average);
-	float stepZ = (d - c) / float(Average);
-
-	float max = f(a, c);
-
-	for (int i = 0; i < Average; i++) {
-		float _z = qMin(d, (i * stepZ + c));
-		for (int j = 0; j < Average; j++) {
-			float _x = qMin(b, (j * stepX + a));
-			if (max < f(_x, _z))
-				max = f(_x, _z);
-		}
-	}
-	return max;
-}
-
-float Window::min_func() {
-	float stepX = (b - a) / float(Average);
-	float stepZ = (d - c) / float(Average);
-
-	float min = f(a, c);
-
-	for (int i = 0; i < Average; i++) {
-		float _z = qMin(d, (i * stepZ + c));
-		for (int j = 0; j < Average; j++) {
-			float _x = qMin(b, (j * stepX + a));
-			if (min > f(_x, _z))
-				min = f(_x, _z);
-		}
-	}
-	return min;
-}
-
-float Window::max_meth() {
-	float stepX = (b - a) / float(Average);
-	float stepZ = (d - c) / float(Average);
-
-	float max = poly(a, c);
-
-    for (int i = 0; i < Average; i++) {
-		float _z = qMin(d, (i * stepZ + c));
-		for (int j = 0; j < Average; j++) {
-			float _x = qMin(b, (j * stepX + a));
-			if (max < poly(_x, _z))
-				max = poly(_x, _z);
-		}
-	}
-	return max;
-}
-
-float Window::min_meth() {
-	float stepX = (b - a) / float(Average);
-	float stepZ = (d - c) / float(Average);
-
-	float min = poly(a, c);
-
-    for (int i = 0; i < Average; i++) {
-		float _z = qMin(d, (i * stepZ + c));
-		for (int j = 0; j < Average; j++) {
-			float _x = qMin(b, (j * stepX + a));
-			if (min > poly(_x, _z))
-				min = poly(_x, _z);
-		}
-	}
-	return min;
-}
-
-char* Window::text()
-{
-	char buf1[30], buf2[30];
-	strcpy(buf1, "a = ");
-	sprintf(buf2, "%.3f", a);
-	strcat(buf1, buf2);
-	return buf1;
 }

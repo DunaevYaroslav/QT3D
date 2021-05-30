@@ -1,8 +1,8 @@
-HEADERS       = window.h
-SOURCES       = window.cpp \
-                main_3d.cpp \
-                methods.cpp
+QT       += core gui \
+            opengl
+HEADERS += window.h
+SOURCES += \
+            main.cpp \
+            window.cpp \
+            method.cpp
 
-QT += widgets
-QT += datavisualization
-TEMPLATE += app
