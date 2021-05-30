@@ -32,7 +32,7 @@ double f_7 (double x, double y){
 myGLWidget::myGLWidget(){
     FUNCTION = f_0;
     func_id = 0;
-    f_name = "sin(x)/cos(y)";
+    f_name = "press_0";
 }
 int myGLWidget::parse_command_line (int argc, char *argv[]){
     if (argc == 1)
