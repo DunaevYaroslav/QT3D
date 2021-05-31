@@ -173,7 +173,7 @@ void myGLWidget::paintGL(){\
     painter.end();
     ProjectionMatrix();
     glEnable(GL_DEPTH_TEST);
-    glBegin(GL_QUADS);
+    glBegin(GL_LINE_LOOP);
 
     if(view_id == 0){ //рисуем только исходную функцию
         int	i, j, x_n = 300, y_m = 300;
